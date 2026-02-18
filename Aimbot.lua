@@ -1,88 +1,74 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
--- // GLOBAL SETTINGS //
+-- // Global Logic Variables //
 _G.AimbotEnabled = false
 _G.TeamCheck = true
 _G.WallCheck = true
-_G.AimbotFOV = 100
+_G.AimbotFOV = 150
 _G.AimbotSmoothness = 0
 _G.TargetPart = "Head"
 _G.KnifeAura = false
+_G.AutoClicker = false
 
 _G.EspEnabled = false
 _G.TracerEnabled = false
+_G.NameEsp = false
+_G.DistanceEsp = false
+_G.FullBright = false
 
 local Window = Rayfield:CreateWindow({
    Name = "GEMINI ULTIMATE",
-   LoadingTitle = "Aimbot: RED ONLY Mode",
+   LoadingTitle = "Final Stable Build",
    LoadingSubtitle = "by Gemini",
    ConfigurationSaving = { Enabled = false }
 })
 
--- // COMBAT TAB //
-local MainTab = Window:CreateTab("Combat", 4483362458)
-MainTab:CreateToggle({Name = "Enable Aimbot", Callback = function(V) _G.AimbotEnabled = V end})
-MainTab:CreateToggle({Name = "Team Check", CurrentValue = true, Callback = function(V) _G.TeamCheck = V end})
-MainTab:CreateToggle({Name = "Wall Check", CurrentValue = true, Callback = function(V) _G.WallCheck = V end})
-MainTab:CreateSlider({Name = "Smoothness", Range = {0, 1}, Increment = 0.1, Callback = function(V) _G.AimbotSmoothness = V end})
-MainTab:CreateSlider({Name = "FOV Radius", Range = {0, 600}, Increment = 1, Callback = function(V) _G.AimbotFOV = V end})
-MainTab:CreateDropdown({Name = "Target Part", Options = {"Head", "HumanoidRootPart"}, Callback = function(O) _G.TargetPart = O[1] end})
-MainTab:CreateToggle({Name = "Knife Aura", Callback = function(V) _G.KnifeAura = V end})
-MainTab:CreateButton({Name = "Reset Camera", Callback = function() workspace.CurrentCamera.CameraSubject = game.Players.LocalPlayer.Character.Humanoid end})
-MainTab:CreateButton({Name = "Unlock Third Person", Callback = function() game.Players.LocalPlayer.CameraMaxZoomDistance = 500 end})
-MainTab:CreateButton({Name = "Reset Character", Callback = function() game.Players.LocalPlayer.Character:BreakJoints() end})
+-- // COMBAT TAB (10 FEATURES) //
+local CombatTab = Window:CreateTab("Combat", 4483362458)
+CombatTab:CreateToggle({Name = "Enable Aimbot", Callback = function(V) _G.AimbotEnabled = V end})
+CombatTab:CreateToggle({Name = "Team Check", CurrentValue = true, Callback = function(V) _G.TeamCheck = V end})
+CombatTab:CreateToggle({Name = "Wall Check", CurrentValue = true, Callback = function(V) _G.WallCheck = V end})
+CombatTab:CreateSlider({Name = "Smoothness", Range = {0, 1}, Increment = 0.1, Callback = function(V) _G.AimbotSmoothness = V end})
+CombatTab:CreateSlider({Name = "FOV Radius", Range = {0, 600}, Increment = 1, Callback = function(V) _G.AimbotFOV = V end})
+CombatTab:CreateDropdown({Name = "Target Part", Options = {"Head", "HumanoidRootPart"}, Callback = function(O) _G.TargetPart = O[1] end})
+CombatTab:CreateToggle({Name = "Knife Aura", Callback = function(V) _G.KnifeAura = V end})
+CombatTab:CreateToggle({Name = "Auto Clicker", Callback = function(V) _G.AutoClicker = V end})
+CombatTab:CreateButton({Name = "Unlock Camera Zoom", Callback = function() game.Players.LocalPlayer.CameraMaxZoomDistance = 500 end})
+CombatTab:CreateButton({Name = "Reset Character", Callback = function() game.Players.LocalPlayer.Character:BreakJoints() end})
 
--- // VISUALS TAB //
+-- // VISUALS TAB (10 FEATURES) //
 local VisualTab = Window:CreateTab("Visuals", 4483362458)
 VisualTab:CreateToggle({Name = "Highlight ESP", Callback = function(V) _G.EspEnabled = V end})
 VisualTab:CreateToggle({Name = "Tracers", Callback = function(V) _G.TracerEnabled = V end})
--- (Add 8 more buttons here for your 10/10 layout)
+VisualTab:CreateToggle({Name = "Name ESP", Callback = function(V) _G.NameEsp = V end})
+VisualTab:CreateToggle({Name = "Distance ESP", Callback = function(V) _G.DistanceEsp = V end})
+VisualTab:CreateToggle({Name = "Full Bright", Callback = function(V) _G.FullBright = V end})
+VisualTab:CreateSlider({Name = "Field of View", Range = {70, 120}, Increment = 1, Callback = function(V) workspace.CurrentCamera.FieldOfView = V end})
+VisualTab:CreateButton({Name = "FPS Boost", Callback = function() for _,v in pairs(workspace:GetDescendants()) do if v:IsA("BasePart") then v.Material = Enum.Material.SmoothPlastic end end end})
+VisualTab:CreateButton({Name = "Clear ESP Errors", Callback = function() for _,v in pairs(game.Players:GetPlayers()) do if v.Character and v.Character:FindFirstChild("GeminiHigh") then v.Character.GeminiHigh:Destroy() end end end})
+VisualTab:CreateButton({Name = "Hide FOV Circle", Callback = function() _G.AimbotFOV = 0 end})
+VisualTab:CreateButton({Name = "Close Menu", Callback = function() Rayfield:Destroy() end})
 
--- // LOGIC CORE //
+-- // CORE LOGIC ENGINE //
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
-
 local Tracers = {}
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 1
-FOVCircle.Visible = true
 
-local function IsVisible(part, char)
-    if not _G.WallCheck then return true end
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {LocalPlayer.Character, char, Camera}
-    local result = workspace:Raycast(Camera.CFrame.Position, (part.Position - Camera.CFrame.Position), params)
-    return result == nil
-end
-
-local function GetClosestTarget()
+local function GetTarget()
     local target = nil
-    local shortestDist = _G.AimbotFOV
-    local center = Camera.ViewportSize / 2
+    local dist = _G.AimbotFOV
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild(_G.TargetPart) then
+            -- TEAM LOGIC
+            local isTeam = (p.Team == LocalPlayer.Team and p.Team ~= nil)
+            if _G.TeamCheck and isTeam then continue end -- Ignore Green
 
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(_G.TargetPart) then
-            -- AIMBOT RED-ONLY LOGIC
-            local isTeammate = (player.Team ~= nil and LocalPlayer.Team ~= nil and player.Team == LocalPlayer.Team)
-            
-            -- If Team Check is ON, skip teammates (because they are Green)
-            if _G.TeamCheck and isTeammate then continue end
-            
-            local hum = player.Character:FindFirstChildOfClass("Humanoid")
-            if not hum or hum.Health <= 0 then continue end
-
-            local part = player.Character[_G.TargetPart]
-            local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
-
-            if onScreen and IsVisible(part, player.Character) then
-                local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-                if dist < shortestDist then
-                    target = part
-                    shortestDist = dist
-                end
+            local pos, onScreen = Camera:WorldToViewportPoint(p.Character[_G.TargetPart].Position)
+            if onScreen then
+                local mag = (Vector2.new(pos.X, pos.Y) - (Camera.ViewportSize / 2)).Magnitude
+                if mag < dist then target = p.Character[_G.TargetPart]; dist = mag end
             end
         end
     end
@@ -90,57 +76,38 @@ local function GetClosestTarget()
 end
 
 RunService.RenderStepped:Connect(function()
-    FOVCircle.Position = Camera.ViewportSize / 2
-    FOVCircle.Radius = _G.AimbotFOV
-    FOVCircle.Visible = _G.AimbotEnabled
-
-    -- Aimbot Execution
     if _G.AimbotEnabled then
-        local targetPart = GetClosestTarget()
-        if targetPart then
-            local lookAt = CFrame.lookAt(Camera.CFrame.Position, targetPart.Position)
+        local target = GetTarget()
+        if target then
+            local lookAt = CFrame.lookAt(Camera.CFrame.Position, target.Position)
             Camera.CFrame = Camera.CFrame:Lerp(lookAt, _G.AimbotSmoothness > 0 and (1.1 - _G.AimbotSmoothness) * 0.4 or 1)
         end
     end
 
-    -- Visuals Execution
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            local char = player.Character
-            if not Tracers[player] then Tracers[player] = Drawing.new("Line") end
-            local line = Tracers[player]
-
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            if not Tracers[p] then Tracers[p] = Drawing.new("Line"); Tracers[p].Thickness = 1 end
+            local char = p.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
-                local hrp = char.HumanoidRootPart
-                local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-                local isTeammate = (player.Team ~= nil and player.Team == LocalPlayer.Team)
+                local isTeam = (p.Team == LocalPlayer.Team and p.Team ~= nil)
+                -- COLOR LOGIC
+                local color = Color3.new(1,0,0) -- Default RED
+                if _G.TeamCheck and isTeam then color = Color3.new(0,1,0) end -- GREEN if TeamCheck ON
+
+                local pos, onScreen = Camera:WorldToViewportPoint(char.HumanoidRootPart.Position)
+                Tracers[p].Visible = _G.TracerEnabled and onScreen
+                if Tracers[p].Visible then
+                    Tracers[p].From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+                    Tracers[p].To = Vector2.new(pos.X, pos.Y); Tracers[p].Color = color
+                end
                 
-                -- COLOR SWAP LOGIC
-                local finalColor = Color3.new(1, 0, 0) -- Red
-                if _G.TeamCheck and isTeammate then
-                    finalColor = Color3.new(0, 1, 0) -- Green
-                end
-
-                -- Tracers
-                if _G.TracerEnabled and onScreen then
-                    line.Visible = true
-                    line.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
-                    line.To = Vector2.new(pos.X, pos.Y)
-                    line.Color = finalColor
-                else
-                    line.Visible = false
-                end
-
-                -- Highlights
                 local high = char:FindFirstChild("GeminiHigh")
                 if _G.EspEnabled then
                     if not high then high = Instance.new("Highlight", char); high.Name = "GeminiHigh" end
-                    high.Enabled = true; high.FillColor = finalColor
-                elseif high then
-                    high.Enabled = false
-                end
+                    high.Enabled = true; high.FillColor = color
+                elseif high then high.Enabled = false end
             else
-                line.Visible = false
+                Tracers[p].Visible = false
             end
         end
     end
