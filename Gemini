@@ -1,0 +1,178 @@
+-- 1. LOAD RAYFIELD LIBRARY
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- 2. INITIALIZE GLOBAL VARIABLES (The "Brain" for your logic)
+_G.AimbotEnabled = false
+_G.AimbotFOV = 150
+_G.AimbotSmoothness = 0.5
+_G.TargetPart = "Head"
+_G.WallCheck = true
+_G.EspEnabled = false
+_G.TracerEnabled = false
+_G.NameEsp = false
+_G.DistanceEsp = false
+_G.VisualTeamCheck = true
+_G.KnifeAura = false
+
+-- 3. CREATE THE WINDOW
+local Window = Rayfield:CreateWindow({
+   Name = "Gemini Hub | Aimbot & ESP",
+   LoadingTitle = "Loading Logic Core...",
+   LoadingSubtitle = "by Gemini",
+   ConfigurationSaving = { Enabled = false }
+})
+
+-- 4. CREATE TABS
+local MainTab = Window:CreateTab("Combat", 4483362458)
+local VisualTab = Window:CreateTab("Visuals", 4483362458)
+
+-- 5. ADD COMBAT TOGGLES
+MainTab:CreateToggle({
+   Name = "Enable Aimbot",
+   CurrentValue = false,
+   Callback = function(Value) _G.AimbotEnabled = Value end,
+})
+
+MainTab:CreateSlider({
+   Name = "Aimbot FOV",
+   Range = {0, 1000},
+   Increment = 10,
+   CurrentValue = 150,
+   Callback = function(Value) _G.AimbotFOV = Value end,
+})
+
+MainTab:CreateToggle({
+   Name = "Knife Aura",
+   CurrentValue = false,
+   Callback = function(Value) _G.KnifeAura = Value end,
+})
+
+-- 6. ADD VISUAL TOGGLES
+VisualTab:CreateToggle({
+   Name = "Player ESP (Highlights)",
+   CurrentValue = false,
+   Callback = function(Value) _G.EspEnabled = Value end,
+})
+
+VisualTab:CreateToggle({
+   Name = "Tracers",
+   CurrentValue = false,
+   Callback = function(Value) _G.TracerEnabled = Value end,
+})
+
+VisualTab:CreateToggle({
+   Name = "Team Check",
+   CurrentValue = true,
+   Callback = function(Value) _G.VisualTeamCheck = Value end,
+})
+
+-- [[ PASTE YOUR LOGIC CORE BELOW THIS LINE ]]
+-- (I have integrated your code here)
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 1
+FOVCircle.Color = Color3.new(1, 1, 1)
+FOVCircle.Filled = false
+
+local Tracers = {}
+local Names = {}
+
+local function IsVisible(part, char)
+    if not _G.WallCheck then return true end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {LocalPlayer.Character, char, Camera}
+    local result = workspace:Raycast(Camera.CFrame.Position, (part.Position - Camera.CFrame.Position), params)
+    return result == nil
+end
+
+local function GetClosestTarget()
+    local target = nil
+    local shortestDist = _G.AimbotFOV
+    local center = Camera.ViewportSize / 2
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(_G.TargetPart) then
+            if _G.VisualTeamCheck and player.Team == LocalPlayer.Team then continue end
+            local hum = player.Character:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 then continue end
+            local part = player.Character[_G.TargetPart]
+            local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+            if onScreen and IsVisible(part, player.Character) then
+                local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+                if dist < shortestDist then
+                    target = part
+                    shortestDist = dist
+                end
+            end
+        end
+    end
+    return target
+end
+
+RunService.RenderStepped:Connect(function()
+    local center = Camera.ViewportSize / 2
+    FOVCircle.Position = center
+    FOVCircle.Radius = _G.AimbotFOV
+    FOVCircle.Visible = _G.AimbotEnabled
+
+    if _G.AimbotEnabled then
+        local targetPart = GetClosestTarget()
+        if targetPart then
+            local lookAt = CFrame.lookAt(Camera.CFrame.Position, targetPart.Position)
+            Camera.CFrame = Camera.CFrame:Lerp(lookAt, (1.1 - _G.AimbotSmoothness) * 0.4)
+        end
+    end
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local char = player.Character
+            local isTeammate = (player.Team == LocalPlayer.Team)
+            if _G.VisualTeamCheck and isTeammate then
+                if Tracers[player] then Tracers[player].Visible = false end
+                continue 
+            end
+            if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChildOfClass("Humanoid").Health > 0 then
+                local hrp = char.HumanoidRootPart
+                local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+                local color = isTeammate and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)
+                if onScreen then
+                    if _G.TracerEnabled then
+                        if not Tracers[player] then Tracers[player] = Drawing.new("Line") end
+                        Tracers[player].Visible, Tracers[player].From, Tracers[player].To, Tracers[player].Color = true, Vector2.new(center.X, Camera.ViewportSize.Y), Vector2.new(pos.X, pos.Y), color
+                    elseif Tracers[player] then Tracers[player].Visible = false end
+                    
+                    local high = char:FindFirstChild("GeminiHigh")
+                    if _G.EspEnabled then
+                        if not high then 
+                            high = Instance.new("Highlight", char)
+                            high.Name = "GeminiHigh"
+                        end
+                        high.Enabled, high.FillColor = true, color
+                    elseif high then high.Enabled = false end
+                end
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.1) do
+        if _G.KnifeAura and LocalPlayer.Character then
+            local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
+            if tool and (tool.Name:lower():find("knife") or tool.Name:lower():find("bayonet")) then
+                for _, player in pairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                        if player.Team ~= LocalPlayer.Team and (LocalPlayer.Character.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude < 15 then 
+                            tool:Activate() 
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
